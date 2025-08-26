@@ -12,6 +12,20 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+    - name: Install dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+        sudo apt-get install -y curl libssl-dev libcurl4-openssl-dev
+
+    - name: Download SonarQube Build Wrapper
+      shell: bash
+      run: |
+        wget https://binaries.sonarsource.com/Distribution/build-wrapper/build-wrapper-linux-x86-64.zip
+        unzip build-wrapper-linux-x86-64.zip
+        mv build-wrapper-linux-x86-64 build-wrapper
+
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
@@ -20,11 +34,24 @@ jobs:
     - name: Configure
       shell: bash
       run: |
-        sudo apt-get install -y curl libssl-dev libcurl4-openssl-dev
         mkdir build
         cmake -S . -B build
 
-    - name: Make
+    - name: Build with Build Wrapper
+      shell: bash
+      run: ./build-wrapper/build-wrapper --out-dir build_wrapper_output cmake --build build
+
+    - name: Run SonarScanner
+      env:
+        SONAR_SCANNER_VERSION: 6.2.1.4610
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Store your SonarQube token as a GitHub secret
       shell: bash
       run: |
-        cmake --build build
+        curl -sSLo $HOME/.sonar/sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${{ env.SONAR_SCANNER_VERSION }}-linux-x64.zip
+        unzip -o $HOME/.sonar/sonar-scanner.zip -d $HOME/.sonar/
+        echo "$HOME/.sonar/sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}-linux-x64/bin" >> $GITHUB_PATH
+        mv "$HOME/.sonar/sonar-scanner-${{ env.SONAR_SCANNER_VERSION }}-linux-x64" "$HOME/.sonar/sonar-scanner-linux-x64"
+        ./sonar-scanner-linux-x64/bin/sonar-scanner \
+          -Dsonar.projectKey=your_project_key \
+          -Dsonar.sources=. \
+          -Dsonar.cfamily.build-wrapper-output=build_wrapper_output
